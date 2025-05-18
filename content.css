@@ -1,0 +1,12 @@
+.malicious-warning {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  padding: 15px;
+  background: #ff4444;
+  color: white;
+  border-radius: 5px;
+  z-index: 999999;
+  font-family: Arial, sans-serif;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}

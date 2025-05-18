@@ -2,12 +2,19 @@ from flask import Flask, request, jsonify, render_template
 import joblib
 import pandas as pd
 import re
+import logging
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)  
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 try:
-    model = joblib.load('models/XSSmodel.pkl')
+    model = joblib.load('models/xgbxss_model.pkl')
 except Exception as e:
     raise RuntimeError(f"Erreur de chargement du modèle : {e}")
 
@@ -271,53 +278,45 @@ class XSS_FeatureExtractor:
         })
               return pd.Series(features)
 
-@app.route('/api/detect', methods=['POST'])
-def api_detect():
-    data = request.get_json()
-    payload = data.get('payload', '')
+extractor = XSS_FeatureExtractor()
+def is_malicious(content):
+    features = extractor.extract_all_features({'payload': content})
+    features_df = pd.DataFrame([features])
+    prediction = model.predict(features_df)[0]
+    confidence = model.predict_proba(features_df)[0][1]
+    return bool(prediction), float(confidence)
 
-    if not payload:
-        return jsonify({'error': 'Payload vide'}), 400
 
+# In the /analyze endpoint
+@app.route('/analyze', methods=['POST'])
+def analyze():
     try:
-        extractor = XSS_FeatureExtractor()
-        row = {'payload': payload}
-        features = extractor.extract_all_features(row)
-        features_df = pd.DataFrame([features])
-        prediction = model.predict(features_df)[0]
-        confidence = model.predict_proba(features_df)[0][1]
+        data = request.json
+        elements = data.get('content', {}).get('elements', {})
+        
+        malicious_elements = {}
+        for tag, html_contents in elements.items():
+            for html_content in html_contents:
+                is_mal, confidence = is_malicious(html_content)
+                if is_mal:
+                    if tag not in malicious_elements:
+                        malicious_elements[tag] = []
+                    malicious_elements[tag].append({
+                        'snippet': html_content[:100],
+                        'confidence': confidence
+                    })
 
         return jsonify({
-            'malicious': bool(prediction),
-            'confidence': float(confidence),
-            'features': features.to_dict()
+            'malicious': len(malicious_elements) > 0,
+            'malicious_elements': malicious_elements
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        payload = request.form.get('payload', '')
-        if not payload:
-            return render_template('index.html', error="Le champ ne peut pas être vide")
-        
-        extractor = XSS_FeatureExtractor()
-        row = {'payload': payload}
-        features = extractor.extract_all_features(row)
-        features_df = pd.DataFrame([features])
-        prediction = model.predict(features_df)[0]
-        confidence = model.predict_proba(features_df)[0][1]
-        result = {
-            'malicious': bool(prediction),
-            'confidence': round(confidence * 100, 2),
-            'features': features.to_dict()
-        }
-
-        return render_template('result.html', payload=payload, result=result)
-
-    return render_template('index.html')
+        logger.error(f"Error: {str(e)}")
+        return jsonify({'malicious': True})
+    except Exception as e:
+        logger.error(f"Analysis error: {str(e)}")
+        return jsonify({'malicious': True})  # Fail-safe: block on critical errors
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

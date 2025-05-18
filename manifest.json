@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "XSS Scanner",
+  "version": "1.0",
+  "permissions": [
+    "scripting",
+    "tabs",
+    "contextMenus",
+    "webNavigation",
+    "activeTab",
+    "storage",
+    "alarms"],
+   "action": {
+    "default_popup" : "popup.html"
+  },
+   "host_permissions": [
+    "*://*/*",
+    "http://localhost:5000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["purify.min.js","content.js"],
+    "css":["content.css"],
+    "run_at": "document_start",
+    "all_frames": true
+  }],
+  "web_accessible_resources": [
+    {
+      "resources": ["freeze.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+  
+}
